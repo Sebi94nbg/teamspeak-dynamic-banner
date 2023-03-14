@@ -1,0 +1,109 @@
+version: "3.8"
+name: "dynamic-banner"
+
+services:
+  frontend:
+    image: nginx:1.23.3
+    container_name: application-frontend
+    depends_on:
+      - backend
+    restart: unless-stopped
+    ports:
+      - 80:80
+    volumes:
+      - ./laravel/public:/var/www/public
+      - ./docker/nginx:/etc/nginx/conf.d
+    networks:
+      - bridge-network
+
+  backend:
+    build:
+      context: ./
+      dockerfile: Dockerfile
+    image: debian:bookworm-slim
+    container_name: application-backend
+    depends_on:
+      - database
+      - cache
+    restart: unless-stopped
+    working_dir: /var/www/
+    volumes:
+      - ./laravel/:/var/www
+    networks:
+      - bridge-network
+
+  schedule:
+    build:
+      context: ./
+      dockerfile: Dockerfile
+    image: debian:bookworm-slim
+    container_name: application-schedule
+    depends_on:
+      - database
+      - cache
+    restart: unless-stopped
+    working_dir: /var/www/
+    volumes:
+      - ./laravel/:/var/www
+    command: php artisan schedule:work --no-interaction -vvv
+    networks:
+      - bridge-network
+
+  queue:
+    build:
+      context: ./
+      dockerfile: Dockerfile
+    image: debian:bookworm-slim
+    container_name: application-queue
+    depends_on:
+      - database
+      - cache
+    restart: unless-stopped
+    working_dir: /var/www/
+    volumes:
+      - ./laravel/:/var/www
+    command: php artisan queue:listen --timeout=10 --tries=1 --no-interaction -vvv
+    networks:
+      - bridge-network
+
+  cache:
+    image: redis:7.0.9
+    container_name: application-cache
+    restart: unless-stopped
+    environment:
+      MYSQL_DATABASE: laravel
+      MYSQL_ALLOW_EMPTY_PASSWORD: True
+    volumes:
+      - ./docker/redis/data:/data
+    networks:
+      - bridge-network
+
+  database:
+    image: mysql:8.0.32
+    container_name: application-mysql
+    restart: unless-stopped
+    environment:
+      MYSQL_DATABASE: laravel
+      MYSQL_ALLOW_EMPTY_PASSWORD: True
+    volumes:
+      - ./docker/mysql/my.cnf:/etc/mysql/conf.d/99-custom.cnf
+    networks:
+      - bridge-network
+
+  teamspeak:
+    image: teamspeak
+    container_name: teamspeak
+    restart: always
+    ports:
+      - 9987:9987/udp
+      - 10011:10011
+      - 10022:10022
+      - 30033:30033
+    environment:
+      TS3SERVER_LICENSE: accept
+    networks:
+      - bridge-network
+
+networks:
+  bridge-network:
+    driver: bridge
